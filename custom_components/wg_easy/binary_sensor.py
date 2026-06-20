@@ -66,7 +66,7 @@ class WGPeerBinarySensor(CoordinatorEntity, BinarySensorEntity):
             except ValueError:
                 return False
 
-            timeout = timedelta(minutes=self._online_timeout_seconds)
+            timeout = timedelta(seconds=self._online_timeout_seconds)
             return datetime.now(UTC) - handshake_dt <= timeout
 
         if self.sensor_type == "enabled":
