@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_TOKEN, CONF_URL
+from homeassistant.const import CONF_PASSWORD, CONF_URL
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import device_registry as dr
@@ -18,7 +18,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: WGEasyConfigEntry) -> bo
         hass,
         config_entry_id=entry.entry_id,
         url=entry.data[CONF_URL],
-        token=entry.data[CONF_TOKEN],
+        password=entry.data[CONF_PASSWORD],
         poll_interval=entry.options.get("poll_interval", DEFAULT_POLL_INTERVAL),
     )
 

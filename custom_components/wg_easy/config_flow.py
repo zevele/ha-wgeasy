@@ -3,7 +3,7 @@ from __future__ import annotations
 import voluptuous as vol
 
 from homeassistant import config_entries
-from homeassistant.const import CONF_TOKEN, CONF_URL
+from homeassistant.const import CONF_PASSWORD, CONF_URL
 from homeassistant.core import callback
 
 from .const import DEFAULT_ONLINE_TIMEOUT_SECONDS, DEFAULT_POLL_INTERVAL, DOMAIN
@@ -42,7 +42,7 @@ class WGEasyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 unique_id=user_input[CONF_URL],
                 data_updates={
                     CONF_URL: user_input[CONF_URL],
-                    CONF_TOKEN: user_input[CONF_TOKEN],
+                    CONF_PASSWORD: user_input[CONF_PASSWORD],
                 },
             )
 
@@ -56,7 +56,7 @@ class WGEasyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         return vol.Schema(
             {
                 vol.Required(CONF_URL, default=data.get(CONF_URL, "")): str,
-                vol.Required(CONF_TOKEN, default=data.get(CONF_TOKEN, "")): str,
+                vol.Required(CONF_PASSWORD, default=data.get(CONF_PASSWORD, "")): str,
             }
         )
 

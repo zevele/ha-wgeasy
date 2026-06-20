@@ -24,7 +24,7 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         *,
         config_entry_id: str,
         url: str,
-        token: str,
+        password: str,
         poll_interval: int = DEFAULT_POLL_INTERVAL,
     ) -> None:
         super().__init__(
@@ -34,7 +34,7 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=timedelta(seconds=5),
         )
         self.url = url
-        self.token = token
+        self.password = password
         self.config_entry_id = config_entry_id
         self.session = async_get_clientsession(hass)
         self._known_client_keys: set[str] = set()
@@ -61,7 +61,7 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         try:
             if not self.session_cookie:
-                login_payload = {"password": self.token}
+                login_payload = {"password": self.password}
                 async with self.session.post(session_url, json=login_payload) as login_resp:
                     if login_resp.status != 200:
                         raise UpdateFailed(f"Login failed with status {login_resp.status}")

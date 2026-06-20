@@ -7,14 +7,14 @@
         "description": "Set up the WG Easy integration.",
         "data": {
           "url": "WG-Easy URL",
-          "token": "WG-Easy password"
+          "password": "WG-Easy password"
         }
       },
       "reconfigure": {
         "title": "Reconfigure WG Easy",
         "data": {
           "url": "WG-Easy URL",
-          "token": "WG-Easy password"
+          "password": "WG-Easy password"
         }
       }
     },
