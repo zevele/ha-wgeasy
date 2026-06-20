@@ -160,8 +160,6 @@ class WGPeerTextSensor(WGBasePeerEntity, SensorEntity):
         client = self._get_client()
         if not client:
             return None
-        if self.kind == "endpoint":
-            return client.get("latestEndpoint") or client.get("endpoint")
         return client.get(self.kind)
 
 
