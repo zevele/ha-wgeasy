@@ -142,9 +142,6 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             ipv4_val = client.get("address") or client.get("ipv4Address") or inferred_ip
 
-            # MODERN ENDPOINT CORRECTION: Look for "latestEndpoint" used in modern containers
-            endpoint_val = client.get("latestEndpoint") or client.get("endpoint") or None
-
             # HANDSHAKE TIME CONVERSION EXTRACTION: Track absolute duration in seconds
             latest_handshake = client.get("latestHandshakeAt")
             handshake_seconds = None
@@ -167,7 +164,6 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "transferTx": transfer_tx,
                     "transferRxRate": round(transfer_rx_rate, 2),
                     "transferTxRate": round(transfer_tx_rate, 2),
-                    "endpoint": endpoint_val,
                     "ipv4Address": ipv4_val,
                     "ipv6Address": client.get("ipv6Address") or None,
                     "enabled": bool(client.get("enabled", False)),
