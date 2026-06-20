@@ -8,6 +8,7 @@ from aiohttp import ClientError
 
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -30,7 +31,7 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=max(5, int(poll_interval))),
+            update_interval=timedelta(seconds=5),
         )
         self.url = url
         self.token = token
@@ -39,42 +40,83 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._known_client_keys: set[str] = set()
         self.peer_map: dict[str, dict[str, Any]] = {}
         self._previous_counters: dict[str, tuple[datetime, int, int]] = {}
+        self.session_cookie = None
+
+        # Direct background engine loop tracker to bypass Home Assistant native core throttling
+        async_track_time_interval(
+            self.hass,
+            self._force_coordinator_refresh,
+            timedelta(seconds=5),
+        )
+
+    async def _force_coordinator_refresh(self, _now: datetime) -> None:
+        """Force background refresh execution cycle."""
+        await self.async_refresh()
 
     async def _async_update_data(self) -> dict[str, Any]:
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Accept": "application/json",
-        }
+        """Fetch data from the wg-easy API endpoints."""
+        base_url = self.url.rstrip("/")
+        session_url = f"{base_url}/api/session"
+        data_url = f"{base_url}/api/wireguard/client"
 
         try:
-            async with self.session.get(self.url, headers=headers) as response:
+            if not self.session_cookie:
+                login_payload = {"password": self.token}
+                async with self.session.post(session_url, json=login_payload) as login_resp:
+                    if login_resp.status != 200:
+                        raise UpdateFailed(f"Login failed with status {login_resp.status}")
+
+                    login_data = await login_resp.json()
+                    if not login_data.get("success"):
+                        raise UpdateFailed("wg-easy rejected the password configuration")
+
+                    self.session_cookie = login_resp.cookies.get("connect.sid")
+
+            headers = {"Accept": "application/json"}
+            cookies = {}
+            if self.session_cookie:
+                cookies["connect.sid"] = self.session_cookie.value
+
+            async with self.session.get(data_url, headers=headers, cookies=cookies) as response:
                 if response.status == 401:
-                    raise UpdateFailed("Unauthorized – check token")
+                    self.session_cookie = None
+                    raise UpdateFailed("Unauthorized – Session expired, retrying next poll")
+
                 if response.status >= 400:
                     body = await response.text()
                     raise UpdateFailed(f"HTTP {response.status}: {body[:200]}")
 
                 payload = await response.json()
+
         except ClientError as err:
             raise UpdateFailed(f"Request failed: {err}") from err
         except ValueError as err:
             raise UpdateFailed(f"Invalid JSON response: {err}") from err
 
         data = self._normalize_payload(payload)
-        self.peer_map = {client["publicKey"]: client for client in data["clients"]}
+        self.peer_map = {client["id"]: client for client in data["clients"]}
         self._remove_stale_devices(set(self.peer_map))
         return data
 
-    def _normalize_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        clients = payload.get("clients") or []
-        now = dt_util.utcnow()
+    def _normalize_payload(self, payload: Any) -> dict[str, Any]:
+        """Normalize payload to handle direct array structures from server."""
+        if isinstance(payload, list):
+            clients = payload
+            base_payload = {}
+        elif isinstance(payload, dict):
+            clients = payload.get("clients") or []
+            base_payload = payload
+        else:
+            clients = []
+            base_payload = {}
 
+        now = dt_util.utcnow()
         normalized_clients: list[dict[str, Any]] = []
         next_previous_counters: dict[str, tuple[datetime, int, int]] = {}
 
         for client in clients:
-            public_key = client.get("publicKey")
-            if not public_key:
+            client_id = client.get("id") or client.get("publicKey")
+            if not client_id:
                 continue
 
             transfer_rx = int(client.get("transferRx") or 0)
@@ -82,7 +124,7 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             transfer_rx_rate = 0.0
             transfer_tx_rate = 0.0
 
-            previous = self._previous_counters.get(public_key)
+            previous = self._previous_counters.get(client_id)
             if previous is not None:
                 previous_time, previous_rx, previous_tx = previous
                 elapsed = (now - previous_time).total_seconds()
@@ -92,37 +134,61 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     transfer_rx_rate = max(0.0, rx_delta / elapsed)
                     transfer_tx_rate = max(0.0, tx_delta / elapsed)
 
-            next_previous_counters[public_key] = (now, transfer_rx, transfer_tx)
+            next_previous_counters[client_id] = (now, transfer_rx, transfer_tx)
+
+            # Modern IP layout extraction fallback map
+            allowed_ips = client.get("allowedIps") or []
+            inferred_ip = allowed_ips[0] if isinstance(allowed_ips, list) and allowed_ips else None
+
+            ipv4_val = client.get("address") or client.get("ipv4Address") or inferred_ip
+
+            # MODERN ENDPOINT CORRECTION: Look for "latestEndpoint" used in modern containers
+            endpoint_val = client.get("latestEndpoint") or client.get("endpoint") or None
+
+            # HANDSHAKE TIME CONVERSION EXTRACTION: Track absolute duration in seconds
+            latest_handshake = client.get("latestHandshakeAt")
+            handshake_seconds = None
+            if latest_handshake:
+                try:
+                    # Parse standard ISO string format from modern Node.js wrapper api
+                    handshake_time = dt_util.parse_datetime(str(latest_handshake))
+                    if handshake_time:
+                        handshake_seconds = int((now - handshake_time).total_seconds())
+                except Exception:
+                    pass
 
             normalized_clients.append(
                 {
                     **client,
-                    "name": client.get("name") or public_key[:8],
+                    "id": client_id,
+                    "publicKey": client_id,
+                    "name": client.get("name") or client_id[:8],
                     "transferRx": transfer_rx,
                     "transferTx": transfer_tx,
                     "transferRxRate": round(transfer_rx_rate, 2),
                     "transferTxRate": round(transfer_tx_rate, 2),
-                    "endpoint": client.get("endpoint") or None,
-                    "ipv4Address": client.get("ipv4Address") or None,
+                    "endpoint": endpoint_val,
+                    "ipv4Address": ipv4_val,
                     "ipv6Address": client.get("ipv6Address") or None,
                     "enabled": bool(client.get("enabled", False)),
-                    "latestHandshakeAt": client.get("latestHandshakeAt") or None,
+                    "latestHandshakeAt": latest_handshake,
+                    "handshakeSeconds": handshake_seconds,  # Newly injected tracking string
                 }
             )
 
         self._previous_counters = next_previous_counters
 
         return {
-            **payload,
+            **base_payload,
             "clients": normalized_clients,
-            "wireguard_configured_peers": payload.get(
+            "wireguard_configured_peers": base_payload.get(
                 "wireguard_configured_peers", len(normalized_clients)
             ),
-            "wireguard_enabled_peers": payload.get(
+            "wireguard_enabled_peers": base_payload.get(
                 "wireguard_enabled_peers",
                 sum(1 for client in normalized_clients if client["enabled"]),
             ),
-            "wireguard_connected_peers": payload.get(
+            "wireguard_connected_peers": base_payload.get(
                 "wireguard_connected_peers",
                 sum(
                     1
