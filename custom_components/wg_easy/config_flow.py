@@ -6,7 +6,7 @@ from homeassistant import config_entries
 from homeassistant.const import CONF_TOKEN, CONF_URL
 from homeassistant.core import callback
 
-from .const import DEFAULT_ONLINE_TIMEOUT_MINUTES, DEFAULT_POLL_INTERVAL, DOMAIN
+from .const import DEFAULT_ONLINE_TIMEOUT_SECONDS, DEFAULT_POLL_INTERVAL, DOMAIN
 
 
 class WGEasyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -83,9 +83,9 @@ class WGEasyOptionsFlow(config_entries.OptionsFlow):
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=5)),
                 vol.Required(
-                    "online_timeout_minutes",
+                    "online_timeout_seconds",
                     default=self._config_entry.options.get(
-                        "online_timeout_minutes", DEFAULT_ONLINE_TIMEOUT_MINUTES
+                        "online_timeout_seconds", DEFAULT_ONLINE_TIMEOUT_SECONDS
                     ),
                 ): vol.All(vol.Coerce(int), vol.Range(min=1)),
             }
