@@ -8,7 +8,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
 from . import WGEasyConfigEntry
-from .const import DEFAULT_ONLINE_TIMEOUT_MINUTES, DOMAIN, ENTITY_ID_PREFIX
+from .const import DEFAULT_ONLINE_TIMEOUT_SECONDS, DOMAIN, ENTITY_ID_PREFIX
 from .entity_manager import DynamicPeerEntityManager
 
 
@@ -45,9 +45,9 @@ class WGPeerBinarySensor(CoordinatorEntity, BinarySensorEntity):
         return self.coordinator.peer_map.get(self.client_key)
 
     @property
-    def _online_timeout_minutes(self) -> int:
+    def _online_timeout_seconds(self) -> int:
         return self._entry.options.get(
-            "online_timeout_minutes", DEFAULT_ONLINE_TIMEOUT_MINUTES
+            "online_timeout_seconds", DEFAULT_ONLINE_TIMEOUT_SECONDS
         )
 
     @property
@@ -66,7 +66,7 @@ class WGPeerBinarySensor(CoordinatorEntity, BinarySensorEntity):
             except ValueError:
                 return False
 
-            timeout = timedelta(minutes=self._online_timeout_minutes)
+            timeout = timedelta(minutes=self._online_timeout_seconds)
             return datetime.now(UTC) - handshake_dt <= timeout
 
         if self.sensor_type == "enabled":
