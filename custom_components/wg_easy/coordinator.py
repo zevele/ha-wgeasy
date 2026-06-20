@@ -31,7 +31,7 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=5),
+            update_interval=timedelta(seconds=poll_interval),
         )
         self.url = url
         self.password = password
@@ -41,17 +41,6 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.peer_map: dict[str, dict[str, Any]] = {}
         self._previous_counters: dict[str, tuple[datetime, int, int]] = {}
         self.session_cookie = None
-
-        # Direct background engine loop tracker to bypass Home Assistant native core throttling
-        async_track_time_interval(
-            self.hass,
-            self._force_coordinator_refresh,
-            timedelta(seconds=5),
-        )
-
-    async def _force_coordinator_refresh(self, _now: datetime) -> None:
-        """Force background refresh execution cycle."""
-        await self.async_refresh()
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the wg-easy API endpoints."""
