@@ -189,7 +189,6 @@ def create_peer_sensor_entities(coordinator, client):
         WGPeerTotalTrafficSensor(coordinator, client, "tx"),
         WGPeerRateSensor(coordinator, client, "rx_rate"),
         WGPeerRateSensor(coordinator, client, "tx_rate"),
-        WGPeerTextSensor(coordinator, client, "endpoint"),
         WGPeerTextSensor(coordinator, client, "ipv4Address", "ipv4 address"),
         WGPeerTextSensor(coordinator, client, "ipv6Address", "ipv6 address"),
         WGPeerHandshakeSensor(coordinator, client),
