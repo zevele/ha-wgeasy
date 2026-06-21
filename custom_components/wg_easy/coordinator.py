@@ -41,6 +41,8 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.peer_map: dict[str, dict[str, Any]] = {}
         self._previous_counters: dict[str, tuple[datetime, int, int]] = {}
         self.session_cookie = None
+        self.last_response = None
+        self.last_data = None
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from the wg-easy API endpoints."""
@@ -69,23 +71,39 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             async with self.session.get(data_url, headers=headers, cookies=cookies) as response:
                 if response.status == 401:
                     self.session_cookie = None
-                    raise UpdateFailed("Unauthorized – Session expired, retrying next poll")
+                    raise UpdateFailed("Unauthorized - Session expired, retrying next poll")
 
                 if response.status >= 400:
                     body = await response.text()
                     raise UpdateFailed(f"HTTP {response.status}: {body[:200]}")
 
-                payload = await response.json()
+                data = await self._get_data(response)
 
         except ClientError as err:
             raise UpdateFailed(f"Request failed: {err}") from err
         except ValueError as err:
             raise UpdateFailed(f"Invalid JSON response: {err}") from err
 
-        data = self._normalize_payload(payload)
         self.peer_map = {client["id"]: client for client in data["clients"]}
         self._remove_stale_devices(set(self.peer_map))
         return data
+
+    async def _get_data(self, response):
+        current_raw_response = await response.read()
+        
+        if current_raw_response != self.last_response or self.last_data is None:
+            self.last_response = current_raw_response
+            payload = await response.json()
+            self.last_data = self._normalize_payload(payload)
+        else:
+            if (self.last_data == None):
+                self.last_data = self._normalize_payload(None)
+            now = dt_util.utcnow()
+            for client_id in self._previous_counters:
+                _, rx, tx = self._previous_counters[client_id]
+                self._previous_counters[client_id] = (now, rx, tx)
+        return self.last_data
+
 
     def _normalize_payload(self, payload: Any) -> dict[str, Any]:
         """Normalize payload to handle direct array structures from server."""
@@ -133,15 +151,6 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             # HANDSHAKE TIME CONVERSION EXTRACTION: Track absolute duration in seconds
             latest_handshake = client.get("latestHandshakeAt")
-            handshake_seconds = None
-            if latest_handshake:
-                try:
-                    # Parse standard ISO string format from modern Node.js wrapper api
-                    handshake_time = dt_util.parse_datetime(str(latest_handshake))
-                    if handshake_time:
-                        handshake_seconds = int((now - handshake_time).total_seconds())
-                except Exception:
-                    pass
 
             normalized_clients.append(
                 {
@@ -157,7 +166,6 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "ipv6Address": client.get("ipv6Address") or None,
                     "enabled": bool(client.get("enabled", False)),
                     "latestHandshakeAt": latest_handshake,
-                    "handshakeSeconds": handshake_seconds,  # Newly injected tracking string
                 }
             )
 
