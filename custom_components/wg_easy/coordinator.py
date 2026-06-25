@@ -11,6 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
+from homeassistant.util.json import json_loads 
 
 from .const import DEFAULT_POLL_INTERVAL, DOMAIN
 
@@ -85,7 +86,8 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed(f"Invalid JSON response: {err}") from err
 
         self.peer_map = {client["id"]: client for client in data["clients"]}
-        self._remove_stale_devices(set(self.peer_map))
+        if set(self.peer_map) != self._known_client_keys:
+            self._remove_stale_devices(set(self.peer_map))
         return data
 
     async def _get_data(self, response):
@@ -93,7 +95,7 @@ class WGEasyCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         
         if current_raw_response != self.last_response or self.last_data is None:
             self.last_response = current_raw_response
-            payload = await response.json()
+            payload = await response.json(loads=json_loads)
             self.last_data = self._normalize_payload(payload)
         else:
             if (self.last_data == None):
