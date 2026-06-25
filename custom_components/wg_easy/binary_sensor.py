@@ -40,6 +40,7 @@ class WGPeerBinarySensor(CoordinatorEntity, BinarySensorEntity):
         self._attr_name = sensor_type
         self._attr_unique_id = f"wg_{self.client_key}_{sensor_type}"
         self.entity_id = f"binary_sensor.{ENTITY_ID_PREFIX}_{self.client_name_slug}_{sensor_type}"
+        self._last_pushed_state = None
 
     def _get_client(self):
         return self.coordinator.peer_map.get(self.client_key)
@@ -89,6 +90,12 @@ class WGPeerBinarySensor(CoordinatorEntity, BinarySensorEntity):
             model="Peer",
         )
 
+    def async_write_ha_state(self) -> None:
+        current_state = (self.is_on, self.available)
+        if current_state == self._last_pushed_state and self._last_pushed_state is not None:
+            return
+        self._last_pushed_state = current_state
+        super().async_write_ha_state()
 
 
 def create_peer_binary_entities(coordinator, client, entry):

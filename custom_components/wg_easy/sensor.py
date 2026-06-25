@@ -44,6 +44,7 @@ class WGBasePeerEntity(CoordinatorEntity):
         self.client_key = client["publicKey"]
         self.client_name_slug = slugify(client.get("name") or self.client_key[:8])
         self._attr_has_entity_name = True
+        self._last_pushed_state = None
 
     def _get_client(self):
         return self.coordinator.peer_map.get(self.client_key)
@@ -66,6 +67,12 @@ class WGBasePeerEntity(CoordinatorEntity):
     def _set_entity_id(self, platform: str, suffix: str) -> None:
         self.entity_id = f"{platform}.{ENTITY_ID_PREFIX}_{self.client_name_slug}_{suffix}"
 
+    def async_write_ha_state(self) -> None:
+        current_state = (getattr(self, "native_value", None), self.available)
+        if current_state == self._last_pushed_state and self._last_pushed_state is not None:
+            return
+        self._last_pushed_state = current_state
+        super().async_write_ha_state()    
 
 class WGSummarySensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, sensor_type):
@@ -75,6 +82,7 @@ class WGSummarySensor(CoordinatorEntity, SensorEntity):
         self._attr_name = sensor_type
         self._attr_unique_id = f"wg_server_{sensor_type}"
         self.entity_id = f"sensor.{ENTITY_ID_PREFIX}_server_{sensor_type}"
+        self._last_pushed_state = None
 
     @property
     def device_info(self):
@@ -97,6 +105,12 @@ class WGSummarySensor(CoordinatorEntity, SensorEntity):
             return data.get("wireguard_connected_peers")
         return None
 
+    def async_write_ha_state(self) -> None:
+        current_state = (self.native_value, self.available)
+        if current_state == self._last_pushed_state and self._last_pushed_state is not None:
+            return
+        self._last_pushed_state = current_state
+        super().async_write_ha_state()
 
 class WGPeerTotalTrafficSensor(WGBasePeerEntity, SensorEntity):
     def __init__(self, coordinator, client, kind):
